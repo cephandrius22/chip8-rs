@@ -10,7 +10,6 @@ use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
 use std::collections::HashMap;
-use std::env;
 
 use std::io;
 use std::io::prelude::*;
@@ -22,7 +21,7 @@ const HEIGHT: usize = 240;
 struct Chip8 {
     memory: Vec<u8>,
     registers: HashMap<u8, u8>,
-    I: u16,
+    i: u16,
     sound_timer: u8,
     delay_timer: u8,
     pc: u16,
@@ -96,10 +95,10 @@ fn main() -> Result<(), Error> {
 impl Chip8 {
     /// Create a new `World` instance that can draw a moving box.
     fn new() -> Self {
-        Self {
+        Chip8 {
             memory: Vec::new(),
-            register: HashMap::new(),
-            I: 0,
+            registers: HashMap::new(),
+            i: 0,
             sound_timer: 0,
             delay_timer: 0,
             pc: 0x200,
@@ -143,16 +142,16 @@ impl Chip8 {
 
         self.pc += 2;
 
-        match (msb >> 4) {
+        match msb >> 4 {
             0x0 => {
                 match opcode {
                     0x00E0 => self.clear_display(),
                     0x00EE => self.pc = self.stack.pop().unwrap(),
                 }
             },
-            0x1 => self.pc = (opcode & 0x0FFF),
+            0x1 => self.pc = opcode & 0x0FFF,
             0x2 => {
-                let call_location = (opcode & 0x0FFF);
+                let call_location = opcode & 0x0FFF;
                 self.stack.push(self.pc);
                 self.pc = call_location;
             },
@@ -193,11 +192,22 @@ impl Chip8 {
                 let y = ((opcode >> 4) & 0x0F) as u8;
                 let x_val = *self.registers.get(&y).unwrap();
                 let y_val = *self.registers.get(&y).unwrap();
-                match (opcode & 0xF) {
+                match opcode & 0xF {
                     0 => {self.registers.insert(x, y_val);},
                     1 => {self.registers.insert(x, x_val  | y_val);},
                     2 => {self.registers.insert(x, x_val & y_val);},
                     3 => {self.registers.insert(x, x_val ^ y_val);},
+                    4 => {
+                        let add: u16 = x_val as u16 + y_val as u16;
+                        if add > 255 {
+                            self.registers.insert(0xF, 1);
+                        }
+                        self.registers.insert(x, add as u8);
+                    },
+                    5 => {self.registers.insert(x, x_val - y_val);},
+                    6 => {self.registers.insert(x, x_val ^ y_val);},
+                    7 => {self.registers.insert(x, x_val ^ y_val);},
+                    8 => {self.registers.insert(x, x_val ^ y_val);},
                 }
             },
             0x9 => 0,
