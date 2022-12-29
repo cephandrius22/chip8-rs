@@ -15,6 +15,8 @@ use std::io;
 use std::io::prelude::*;
 use std::fs::File;
 
+use rand::{Rng};
+
 const WIDTH: usize = 320;
 const HEIGHT: usize = 240;
 
@@ -27,7 +29,7 @@ struct Chip8 {
     pc: u16,
     sp: u8,
     stack: Vec<u16>,
-    keys: [bool; 12],
+    keys: [bool; 16],
     screen: [[u8; HEIGHT]; WIDTH]
 }
 
@@ -104,7 +106,7 @@ impl Chip8 {
             pc: 0x200,
             sp: 0,
             stack: Vec::new(),
-            keys: [false; 12],
+            keys: [false; 16],
             screen: [[0; HEIGHT]; WIDTH]
         }
     }
@@ -130,8 +132,8 @@ impl Chip8 {
         }
     }
 
-    fn clear_display(&self) {
-        self.screen = [[0; HEIGHT]; WIDTH]
+    fn clear_display(&mut self) {
+        self.screen = [[0; HEIGHT]; WIDTH];
     }
 
     fn execute_instruction(&mut self) {
@@ -147,6 +149,7 @@ impl Chip8 {
                 match opcode {
                     0x00E0 => self.clear_display(),
                     0x00EE => self.pc = self.stack.pop().unwrap(),
+                    _ => (),
                 }
             },
             0x1 => self.pc = opcode & 0x0FFF,
@@ -190,7 +193,7 @@ impl Chip8 {
             0x8 => {
                 let x = ((opcode >> 8) & 0x0F) as u8;
                 let y = ((opcode >> 4) & 0x0F) as u8;
-                let x_val = *self.registers.get(&y).unwrap();
+                let x_val = *self.registers.get(&x).unwrap();
                 let y_val = *self.registers.get(&y).unwrap();
                 match opcode & 0xF {
                     0 => {self.registers.insert(x, y_val);},
@@ -204,13 +207,125 @@ impl Chip8 {
                         }
                         self.registers.insert(x, add as u8);
                     },
-                    5 => {self.registers.insert(x, x_val - y_val);},
-                    6 => {self.registers.insert(x, x_val ^ y_val);},
-                    7 => {self.registers.insert(x, x_val ^ y_val);},
-                    8 => {self.registers.insert(x, x_val ^ y_val);},
+                    5 => {
+                        if x_val > y_val {
+                            self.registers.insert(0xF, 1);
+                        } else {
+                            self.registers.insert(0xF, 0);
+                        }
+                        self.registers.insert(x, x_val - y_val);
+                    },
+                    6 => {
+                        if x_val & 0x1 == 1 {
+                            self.registers.insert(0xF, 1);
+                        } else {
+                            self.registers.insert(0xF, 1);
+                        }
+                        self.registers.insert(x, x_val >> 1);
+                    },
+                    7 => {
+                        if y_val > x_val {
+                            self.registers.insert(0xF, 1);
+                        } else {
+                            self.registers.insert(0xF, 0);
+                        }
+                        self.registers.insert(x, y_val - x_val);
+                    },
+                    0xE => {
+                        if (x_val >> 7) & 1 == 1 {
+                            self.registers.insert(0xF, 1);
+                        } else {
+                            self.registers.insert(0xF, 0);
+                        }
+                        self.registers.insert(x, x_val << 1);
+                    },
+                    _ => (),
                 }
             },
-            0x9 => 0,
+            0x9 => {
+                let x = ((opcode >> 8) & 0x0F) as u8;
+                let y = ((opcode >> 4) & 0x0F) as u8;
+                let x_val = *self.registers.get(&x).unwrap();
+                let y_val = *self.registers.get(&y).unwrap();
+
+                if x_val != y_val {
+                    self.pc += 2;
+                }
+            },
+            0xA => {
+                let nnn = opcode & 0xFFF;
+                self.i = nnn;
+            },
+            0xB => {
+                let nnn = opcode & 0xFFF;
+                let v0_val = *self.registers.get(&0).unwrap();
+                self.pc = nnn + v0_val as u16;
+            },
+            0xC => {
+                let mut rng = rand::thread_rng();
+                let random = rng.gen_range(0..255);
+                let x = ((opcode >> 8) & 0x0F) as u8;
+                let kk = (opcode & 0xFF) as u8;
+                self.registers.insert(x, kk & random);
+
+            },
+            0xD => {
+                // TODO: draw
+            },
+            0xE => {
+                match opcode {
+                    0x009E => {
+                        let x = ((opcode >> 8) & 0x0F) as u8;
+                        let x_val = *self.registers.get(&x).unwrap();
+                        if self.keys[x_val as usize] {
+                            self.pc += 2;
+                        }
+                    },
+                    0x00A1 => {
+                        let x = ((opcode >> 8) & 0x0F) as u8;
+                        let x_val = *self.registers.get(&x).unwrap();
+                        if !self.keys[x_val as usize] {
+                            self.pc += 2;
+                        }
+                    },
+                    _ => (),
+                }
+            },
+            0xF => {
+                let x = ((opcode >> 8) & 0x0F) as u8;
+                let x_val = *self.registers.get(&x).unwrap();
+                match opcode & 0xFF {
+                    0x07 => {
+                        self.registers.insert(x, self.delay_timer);
+                    },
+                    0x0A => {
+
+                    },
+                    0x15 => {
+                        self.delay_timer = x_val;
+                    },
+                    0x18 => {
+                        self.sound_timer = x_val;
+                    },
+                    0x1E => {
+                        self.i += x_val as u16;
+                    },
+                    0x29 => {
+
+                    },
+                    0x33 => {
+
+                    },
+                    0x55 => {
+
+                    },
+                    0x65 => {
+
+                    },
+                    _ => (),
+                }
+            },
+            _ => (),
         }
     }
 
